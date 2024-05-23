@@ -209,7 +209,7 @@ class Database:
 
     def find_students_by_last_name(self, last_name):
         self.cursor.execute("""
-            SELECT id, last_name, first_name, middle_name 
+            SELECT id, last_name, first_name, middle_name, group_id 
             FROM users 
             WHERE roles = 'student' AND last_name = ?
         """, (last_name,))

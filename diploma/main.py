@@ -7,24 +7,47 @@ bot = telebot.TeleBot(API_TOKEN)
 
 db = Database('your_database.db')
 
+student_commands = [
+    types.BotCommand('start', 'Начать'),
+    types.BotCommand('schedule', 'Посмотреть расписание'),
+    types.BotCommand('message_teacher', 'Написать преподавателю'),
+    types.BotCommand('subject_info', 'Информация о предмете')
+]
+
+teacher_commands = [
+    types.BotCommand('start', 'Начать'),
+    types.BotCommand('broadcast', 'Отправить сообщение группам'),
+    types.BotCommand('message_student', 'Написать студенту')
+]
+
+def set_commands_for_user(user_id, role):
+    if role == 'student':
+        bot.set_my_commands(student_commands, scope=types.BotCommandScopeChat(user_id))
+    elif role == 'teacher':
+        bot.set_my_commands(teacher_commands, scope=types.BotCommandScopeChat(user_id))
+    else:
+        bot.set_my_commands([], scope=types.BotCommandScopeChat(user_id))
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     telegram_id = message.from_user.id
-    role, group_name = db.get_student_info(telegram_id)
+    role, group_name, last_name, first_name, middle_name = db.get_student_info(telegram_id)
 
     if role:
+        set_commands_for_user(telegram_id, role)
         if role == 'student' and group_name:
-            bot.reply_to(message, f"Добро пожаловать! Ваша роль: {role}. Ваша учебная группа: {group_name}.")
+            bot.reply_to(message, f"Добро пожаловать! Ваша роль: студент. Ваша учебная группа: {group_name}.")
         else:
-            bot.reply_to(message, f"Добро пожаловать! Ваша роль: {role}.")
+            bot.reply_to(message, f"Добро пожаловать! Ваша роль: преподаватель.")
     else:
         bot.reply_to(message, "Вашего ID нет в базе данных. Пожалуйста, обратитесь к администратору.")
+
+
 
 @bot.message_handler(commands=['schedule'])
 def show_schedule(message):
     telegram_id = message.from_user.id
-    role, group_name = db.get_student_info(telegram_id)
-
+    role, group_name, last_name, first_name, middle_name = db.get_student_info(telegram_id)
     if role:
         if role == 'student' and group_name:
             group_id = db.get_group_id_by_student_id(telegram_id)
@@ -65,11 +88,26 @@ def send_message_to_groups(message, group_names):
     teacher_id = message.from_user.id
     teacher_info = db.get_teacher_info_all(teacher_id)
     teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
+    teacher_department = teacher_info[6]
+
     for group_name in group_names:
         group_id = db.get_group_id_by_name(group_name)
         if group_id:
             students = db.get_students_by_group_id(group_id)
             student_ids.extend([student[0] for student in students])
+
+    student_ids = list(set(student_ids) - {teacher_id})
+
+    if student_ids:
+        for student_id in student_ids:
+            bot.send_message(
+                student_id,
+                f"Сообщение от {teacher_name} ({teacher_department}):\n\n{message.text}"
+            )
+        bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
+    else:
+        bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
+
 
     if student_ids:
         for student_id in student_ids:
@@ -77,6 +115,7 @@ def send_message_to_groups(message, group_names):
         bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
     else:
         bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
+
 
 @bot.message_handler(commands=['message_teacher'])
 def initiate_teacher_message(message):
@@ -131,7 +170,7 @@ def process_student_name(message):
         if matching_students:
             response = "Найдено несколько студентов с такой фамилией. Введите полное ФИО:\n"
             for student in matching_students:
-                response += f"{student[1]} {student[2]} {student[3]}\n"
+                response += f"{student[1]} {student[2]} {student[3]} ({student[4]})\n"
             msg = bot.reply_to(message, response)
             bot.register_next_step_handler(msg, process_student_name)
         else:
@@ -147,11 +186,12 @@ def process_student_name(message):
 def send_message_to_student(message, student_id):
     teacher_id = message.from_user.id
     teacher_info = db.get_teacher_info_all(teacher_id)
+    teacher_department = teacher_info[6]
     if teacher_info:
         teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
         bot.send_message(
             student_id,
-            f"Сообщение от преподавателя {teacher_name}:\n{message.text}"
+            f"Сообщение от преподавателя {teacher_name} Кафедра:{teacher_department}:\n{message.text}"
         )
         bot.reply_to(message, "Сообщение отправлено студенту.")
     else:
