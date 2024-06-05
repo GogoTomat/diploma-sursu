@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 from db import Database
 
-API_TOKEN = 'INSERT YOUR TOKEN HERE'
+API_TOKEN = '6591875624:AAHn0UjMsSzR3hXbUsUeHdf4HpOVL4BQuz0'
 bot = telebot.TeleBot(API_TOKEN)
 
 db = Database('your_database.db')
@@ -20,11 +20,21 @@ teacher_commands = [
     types.BotCommand('message_student', 'Написать студенту')
 ]
 
+depot_commands = [
+    types.BotCommand('start', 'Начать'),
+    types.BotCommand('message_student', 'Написать студенту'),
+    types.BotCommand('message_teacher', 'Написать преподавателю'),
+    types.BotCommand('broadcast', 'Отправить сообщение группам'),
+    types.BotCommand('delete', 'Удалить пользователя')
+]
+
 def set_commands_for_user(user_id, role):
     if role == 'student':
         bot.set_my_commands(student_commands, scope=types.BotCommandScopeChat(user_id))
     elif role == 'teacher':
         bot.set_my_commands(teacher_commands, scope=types.BotCommandScopeChat(user_id))
+    elif role == 'depot':
+        bot.set_my_commands(depot_commands, scope=types.BotCommandScopeChat(user_id))
     else:
         bot.set_my_commands([], scope=types.BotCommandScopeChat(user_id))
 
@@ -37,8 +47,10 @@ def send_welcome(message):
         set_commands_for_user(telegram_id, role)
         if role == 'student' and group_name:
             bot.reply_to(message, f"Добро пожаловать! Ваша роль: студент. Ваша учебная группа: {group_name}.")
-        else:
+        elif role == 'teacher':
             bot.reply_to(message, f"Добро пожаловать! Ваша роль: преподаватель.")
+        elif role == 'depot':
+            bot.reply_to(message, f"Добро пожаловать! Ваша роль: учебная часть.")
     else:
         bot.reply_to(message, "Вашего ID нет в базе данных. Пожалуйста, обратитесь к администратору.")
 
@@ -72,7 +84,7 @@ def send_broadcast(message):
     telegram_id = message.from_user.id
     role = db.get_user_role(telegram_id)
 
-    if role == 'teacher':
+    if role == 'teacher' or role == 'depot':
         msg = bot.reply_to(message, "Введите номера групп через пробел в формате xxx-xx:")
         bot.register_next_step_handler(msg, process_group_selection)
     else:
@@ -100,11 +112,18 @@ def send_message_to_groups(message, group_names):
 
     if student_ids:
         for student_id in student_ids:
-            bot.send_message(
-                student_id,
-                f"Сообщение от {teacher_name} ({teacher_department}):\n\n{message.text}"
-            )
-        bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
+            if role == "teacher":
+                bot.send_message(
+                    student_id,
+                    f"Сообщение от {teacher_name} ({teacher_department}):\n\n{message.text}"
+                )
+                bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
+            else:
+                bot.send_message(
+                    student_id,
+                    f"Сообщение от {teacher_name} (учебная часть):\n\n{message.text}"
+                )
+                bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
     else:
         bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
 
@@ -155,8 +174,11 @@ def send_message_to_teacher(message, teacher_id):
         )
         bot.reply_to(message, "Сообщение отправлено преподавателю.")
     else:
-        bot.reply_to(message, "Произошла ошибка при получении информации о студенте.")
-
+        student_name = f"{student_info['last_name']} {student_info['first_name']} {student_info['middle_name']}"
+        bot.send_message(
+            teacher_id,
+            f"Сообщение от студента учебной части {message.text}"
+        )
 @bot.message_handler(commands=['message_student'])
 def initiate_teacher_message(message):
     msg = bot.reply_to(message, "Введите полное ФИО студента (Фамилия Имя Отчество):")
@@ -195,7 +217,11 @@ def send_message_to_student(message, student_id):
         )
         bot.reply_to(message, "Сообщение отправлено студенту.")
     else:
-        bot.reply_to(message, "Произошла ошибка при получении информации о преподавателе.")
+        teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
+        bot.send_message(
+            student_id,
+            f"Сообщение от учебной части:\n{message.text}"
+        )
 
 
 @bot.message_handler(commands=['subject_info'])
@@ -218,6 +244,55 @@ def process_subject_name(message):
         bot.reply_to(message, subject_details)
     else:
         bot.reply_to(message, "Предмет не найден. Проверьте правильность ввода или попробуйте снова.")
+
+@bot.message_handler(commands=['delete'])
+def delete_user_command(message):
+    telegram_id = message.from_user.id
+    role = db.get_user_role(telegram_id)
+
+    if role == 'depot':
+        msg = bot.reply_to(message, "Введите роль пользователя для удаления (student/teacher):")
+        bot.register_next_step_handler(msg, process_role_for_deletion)
+    else:
+        bot.reply_to(message, "Эта команда доступна только для учебной части.")
+def process_role_for_deletion(message):
+    role_to_delete = message.text.strip().lower()
+    if role_to_delete == 'student':
+        msg = bot.reply_to(message, "Введите название учебной группы:")
+        bot.register_next_step_handler(msg, process_group_for_student_deletion)
+    elif role_to_delete == 'teacher':
+        msg = bot.reply_to(message, "Введите название кафедры:")
+        bot.register_next_step_handler(msg, process_department_for_teacher_deletion)
+    else:
+        bot.reply_to(message, "Некорректная роль. Пожалуйста, введите student или teacher.")
+
+def process_group_for_student_deletion(message):
+    group_name = message.text.strip()
+    msg = bot.reply_to(message, "Введите полное ФИО студента (Фамилия Имя Отчество):")
+    bot.register_next_step_handler(msg, lambda m: process_student_name_for_deletion(m, group_name))
+
+def process_student_name_for_deletion(message, group_name):
+    student_name = message.text.strip()
+    student = db.find_students_by_name_and_group(student_name, group_name)
+    if student:
+        db.delete_user(student['id'])
+        bot.reply_to(message, f"Студент {student_name} из группы {group_name} успешно удален.")
+    else:
+        bot.reply_to(message, "Студент не найден. Проверьте данные и попробуйте снова.")
+
+def process_department_for_teacher_deletion(message):
+    department = message.text.strip()
+    msg = bot.reply_to(message, "Введите полное ФИО преподавателя (Фамилия Имя Отчество):")
+    bot.register_next_step_handler(msg, lambda m: process_teacher_name_for_deletion(m, department))
+
+def process_teacher_name_for_deletion(message, department):
+    teacher_name = message.text.strip()
+    teacher = db.find_teachers_by_name_and_department(teacher_name, department)
+    if teacher:
+        db.delete_user(teacher['id'])
+        bot.reply_to(message, f"Преподаватель {teacher_name} из кафедры {department} успешно удален.")
+    else:
+        bot.reply_to(message, "Преподаватель не найден. Проверьте данные и попробуйте снова.")
 
 
 if __name__ == '__main__':

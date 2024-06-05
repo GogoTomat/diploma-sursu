@@ -281,36 +281,25 @@ class Database:
         """)
         self.conn.commit()
 
+    def find_students_by_name_and_group(self, full_name, group_name):
+        self.cursor.execute("""
+            SELECT users.id, last_name, first_name, middle_name 
+            FROM users 
+            JOIN groups ON users.group_id = groups.id 
+            WHERE users.roles = 'student' AND groups.name = ? AND last_name || ' ' || first_name || ' ' || middle_name = ?
+        """, (group_name, full_name))
+        return self.cursor.fetchone()
+
+    def find_teachers_by_name_and_department(self, full_name, department):
+        self.cursor.execute("""
+            SELECT id, last_name, first_name, middle_name 
+            FROM users 
+            WHERE roles = 'teacher' AND department = ? AND last_name || ' ' || first_name || ' ' || middle_name = ?
+        """, (department, full_name))
+        return self.cursor.fetchone()
+
     def execute_query(self, query, params):
         pass
 
 
 db = Database("your_database.db")
-# db.alter_subjects_table()
-# sub = db.view_taught_subjects()
-#
-# for s in sub:
-#     print(f"{s[0]}, {s[1]}, {s[2]}, {s[3]}, {s[4]}")
-#
-#
-#
-# db.add_subject(1, "Алгебра и Геометрия", "Преподаватель: Васильев Василий Васильевич. Время консультации: Среда(16:20)", "АиГ")
-# db.add_taught_subject(1, 1, 6383988180, 60901, 'Лекция')
-
-# db.delete_user(5937760889)
-# db.delete_group(6001)
-
-# groups = db.view_groups()
-#
-# for group in groups:
-#     print(f"ID: {group[0]}, Name: {group[1]}")
-
-# db.add_user(5937760889, "Иванов", "Иван", "Иванович", "student", 60501, "АиКС", "2021-09-01", "2025-06-30")
-#db.add_role(2, "teacher")
-# db.add_group_with_schedule(6001, "605-01", "s2.jpg")
-# db.add_subject(1, "Математика")
-# db.add_taught_subject(1, 1, 1, 1, "Лекция")
-# with open("schedule.jpg", 'rb') as file:
-#     schedule_image = file.read()
-# db.add_group_with_schedule(60901, "609-01", schedule_image)
-
