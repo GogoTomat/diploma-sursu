@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 from db import Database
 
-API_TOKEN = '6591875624:AAHn0UjMsSzR3hXbUsUeHdf4HpOVL4BQuz0'
+API_TOKEN = 'YOUR_API_TOKEN'
 bot = telebot.TeleBot(API_TOKEN)
 
 db = Database('your_database.db')
@@ -54,8 +54,6 @@ def send_welcome(message):
     else:
         bot.reply_to(message, "Вашего ID нет в базе данных. Пожалуйста, обратитесь к администратору.")
 
-
-
 @bot.message_handler(commands=['schedule'])
 def show_schedule(message):
     telegram_id = message.from_user.id
@@ -93,9 +91,17 @@ def send_broadcast(message):
 def process_group_selection(message):
     group_names = message.text.split()
     msg = bot.reply_to(message, "Введите сообщение для отправки выбранным группам:")
-    bot.register_next_step_handler(msg, lambda m: send_message_to_groups(m, group_names))
+    bot.register_next_step_handler(msg, lambda m: process_broadcast_message(m, group_names))
 
-def send_message_to_groups(message, group_names):
+def process_broadcast_message(message, group_names):
+    if message.content_type == 'text':
+        send_message_to_groups(message, group_names, message.text)
+    elif message.content_type == 'photo':
+        send_message_to_groups(message, group_names, message.photo[-1].file_id, content_type='photo')
+    elif message.content_type == 'document':
+        send_message_to_groups(message, group_names, message.document.file_id, content_type='document')
+
+def send_message_to_groups(message, group_names, content, content_type='text'):
     student_ids = []
     teacher_id = message.from_user.id
     teacher_info = db.get_teacher_info_all(teacher_id)
@@ -112,29 +118,15 @@ def send_message_to_groups(message, group_names):
 
     if student_ids:
         for student_id in student_ids:
-            if role == "teacher":
-                bot.send_message(
-                    student_id,
-                    f"Сообщение от {teacher_name} ({teacher_department}):\n\n{message.text}"
-                )
-                bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
-            else:
-                bot.send_message(
-                    student_id,
-                    f"Сообщение от {teacher_name} (учебная часть):\n\n{message.text}"
-                )
-                bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
-    else:
-        bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
-
-
-    if student_ids:
-        for student_id in student_ids:
-            bot.send_message(student_id, f"Сообщение от {teacher_name}:\n\n{message.text}")
+            if content_type == 'text':
+                bot.send_message(student_id, f"Сообщение от {teacher_name} ({teacher_department}):\n\n{content}")
+            elif content_type == 'photo':
+                bot.send_photo(student_id, content, caption=f"Сообщение от {teacher_name} ({teacher_department}):")
+            elif content_type == 'document':
+                bot.send_document(student_id, content, caption=f"Сообщение от {teacher_name} ({teacher_department}):")
         bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
     else:
         bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
-
 
 @bot.message_handler(commands=['message_teacher'])
 def initiate_teacher_message(message):
@@ -158,29 +150,33 @@ def process_teacher_name(message):
         matching_teachers = db.find_teachers_by_name(teacher_name)
         if len(matching_teachers) == 1:
             msg = bot.reply_to(message, "Введите сообщение для отправки преподавателю:")
-            bot.register_next_step_handler(msg, lambda m: send_message_to_teacher(m, matching_teachers[0][0]))
+            bot.register_next_step_handler(msg, lambda m: process_teacher_message(m, matching_teachers[0][0]))
         else:
             bot.reply_to(message, "Преподаватель с таким именем не найден. Проверьте правильность ввода или попробуйте снова.")
 
-def send_message_to_teacher(message, teacher_id):
+def process_teacher_message(message, teacher_id):
+    if message.content_type == 'text':
+        send_message_to_teacher(message, teacher_id, message.text)
+    elif message.content_type == 'photo':
+        send_message_to_teacher(message, teacher_id, message.photo[-1].file_id, content_type='photo')
+    elif message.content_type == 'document':
+        send_message_to_teacher(message, teacher_id, message.document.file_id, content_type='document')
+
+def send_message_to_teacher(message, teacher_id, content, content_type='text'):
     student_id = message.from_user.id
     student_info = db.get_student_info_by_id(student_id)
-    if student_info:
-        student_name = f"{student_info['last_name']} {student_info['first_name']} {student_info['middle_name']}"
-        student_group = student_info['group_name']
-        bot.send_message(
-            teacher_id,
-            f"Сообщение от студента {student_name} ({student_group}):\n{message.text}"
-        )
-        bot.reply_to(message, "Сообщение отправлено преподавателю.")
-    else:
-        student_name = f"{student_info['last_name']} {student_info['first_name']} {student_info['middle_name']}"
-        bot.send_message(
-            teacher_id,
-            f"Сообщение от студента учебной части {message.text}"
-        )
+    student_name = f"{student_info['last_name']} {student_info['first_name']} {student_info['middle_name']}"
+    student_group = student_info['group_name']
+    if content_type == 'text':
+        bot.send_message(teacher_id, f"Сообщение от студента {student_name} ({student_group}):\n{content}")
+    elif content_type == 'photo':
+        bot.send_photo(teacher_id, content, caption=f"Сообщение от студента {student_name} ({student_group}):")
+    elif content_type == 'document':
+        bot.send_document(teacher_id, content, caption=f"Сообщение от студента {student_name} ({student_group}):")
+    bot.reply_to(message, "Сообщение отправлено преподавателю.")
+
 @bot.message_handler(commands=['message_student'])
-def initiate_teacher_message(message):
+def initiate_student_message(message):
     msg = bot.reply_to(message, "Введите полное ФИО студента (Фамилия Имя Отчество):")
     bot.register_next_step_handler(msg, process_student_name)
 
@@ -201,34 +197,35 @@ def process_student_name(message):
         matching_student = db.find_students_by_name(student_name)
         if len(matching_student) == 1:
             msg = bot.reply_to(message, "Введите сообщение для отправки студенту:")
-            bot.register_next_step_handler(msg, lambda m: send_message_to_student(m, matching_student[0][0]))
+            bot.register_next_step_handler(msg, lambda m: process_student_message(m, matching_student[0][0]))
         else:
             bot.reply_to(message, "Студент с таким именем не найден. Проверьте правильность ввода или попробуйте снова.")
 
-def send_message_to_student(message, student_id):
+def process_student_message(message, student_id):
+    if message.content_type == 'text':
+        send_message_to_student(message, student_id, message.text)
+    elif message.content_type == 'photo':
+        send_message_to_student(message, student_id, message.photo[-1].file_id, content_type='photo')
+    elif message.content_type == 'document':
+        send_message_to_student(message, student_id, message.document.file_id, content_type='document')
+
+def send_message_to_student(message, student_id, content, content_type='text'):
     teacher_id = message.from_user.id
     teacher_info = db.get_teacher_info_all(teacher_id)
+    teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
     teacher_department = teacher_info[6]
-    if teacher_info:
-        teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
-        bot.send_message(
-            student_id,
-            f"Сообщение от преподавателя {teacher_name} Кафедра:{teacher_department}:\n{message.text}"
-        )
-        bot.reply_to(message, "Сообщение отправлено студенту.")
-    else:
-        teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
-        bot.send_message(
-            student_id,
-            f"Сообщение от учебной части:\n{message.text}"
-        )
-
+    if content_type == 'text':
+        bot.send_message(student_id, f"Сообщение от преподавателя {teacher_name} Кафедра: {teacher_department}:\n{content}")
+    elif content_type == 'photo':
+        bot.send_photo(student_id, content, caption=f"Сообщение от преподавателя {teacher_name} Кафедра: {teacher_department}:")
+    elif content_type == 'document':
+        bot.send_document(student_id, content, caption=f"Сообщение от преподавателя {teacher_name} Кафедра: {teacher_department}:")
+    bot.reply_to(message, "Сообщение отправлено студенту.")
 
 @bot.message_handler(commands=['subject_info'])
 def request_subject_info(message):
     msg = bot.reply_to(message, "Введите название предмета или его короткое название:")
     bot.register_next_step_handler(msg, process_subject_name)
-
 
 def process_subject_name(message):
     subject_name = message.text.strip()
@@ -255,6 +252,7 @@ def delete_user_command(message):
         bot.register_next_step_handler(msg, process_role_for_deletion)
     else:
         bot.reply_to(message, "Эта команда доступна только для учебной части.")
+
 def process_role_for_deletion(message):
     role_to_delete = message.text.strip().lower()
     if role_to_delete == 'student':
@@ -293,7 +291,6 @@ def process_teacher_name_for_deletion(message, department):
         bot.reply_to(message, f"Преподаватель {teacher_name} из кафедры {department} успешно удален.")
     else:
         bot.reply_to(message, "Преподаватель не найден. Проверьте данные и попробуйте снова.")
-
 
 if __name__ == '__main__':
     print("Bot is polling...")
