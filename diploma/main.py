@@ -1,5 +1,8 @@
 import telebot
 from telebot import types
+from pyzbar.pyzbar import decode
+from PIL import Image
+import io
 from db import Database
 
 API_TOKEN = 'YOUR_API_TOKEN'
@@ -28,6 +31,8 @@ depot_commands = [
     types.BotCommand('delete', 'Удалить пользователя')
 ]
 
+
+
 def set_commands_for_user(user_id, role):
     if role == 'student':
         bot.set_my_commands(student_commands, scope=types.BotCommandScopeChat(user_id))
@@ -38,6 +43,42 @@ def set_commands_for_user(user_id, role):
     else:
         bot.set_my_commands([], scope=types.BotCommandScopeChat(user_id))
 
+
+@bot.message_handler(commands=['register'])
+def register_user(message):
+    msg = bot.reply_to(message, "Пожалуйста, отправьте фото QR-кода для регистрации.")
+    bot.register_next_step_handler(msg, process_qr_code)
+
+
+def process_qr_code(message):
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        file_info = bot.get_file(file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        image = Image.open(io.BytesIO(downloaded_file))
+        decoded_objects = decode(image)
+
+        if decoded_objects:
+            qr_data = decoded_objects[0].data.decode("utf-8")
+            register_user_from_qr_data(message.chat.id, qr_data)
+        else:
+            bot.reply_to(message, "Не удалось распознать QR-код. Пожалуйста, попробуйте снова.")
+    else:
+        bot.reply_to(message, "Пожалуйста, отправьте фото QR-кода.")
+
+
+def register_user_from_qr_data(chat_id, qr_data):
+    user_data = qr_data.split(',')
+    last_name, first_name, middle_name, roles, group_id, department, start_date, end_date = user_data
+    telegram_id = message.from_user.id
+    
+    existing_user = db.get_user_by_name_and_group(last_name, first_name, middle_name, group_id)
+    if existing_user:
+        bot.send_message(chat_id, "Пользователь с такими данными уже зарегистрирован.")
+    else:
+        db.add_user(telegram_id, last_name, first_name, middle_name, roles, group_id, department, start_date, end_date)
+        bot.send_message(chat_id, f"Пользователь {last_name} {first_name} успешно зарегистрирован.")
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     telegram_id = message.from_user.id
