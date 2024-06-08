@@ -31,7 +31,7 @@ depot_commands = [
     types.BotCommand('delete', 'Удалить пользователя')
 ]
 
-
+db.update_user_activity_status()
 
 def set_commands_for_user(user_id, role):
     if role == 'student':
@@ -72,7 +72,7 @@ def register_user_from_qr_data(chat_id, qr_data):
     user_data = qr_data.split(',')
     last_name, first_name, middle_name, roles, group_id, department, start_date, end_date = user_data
     telegram_id = message.from_user.id
-    
+
     existing_user = db.get_user_by_name_and_group(last_name, first_name, middle_name, group_id)
     if existing_user:
         bot.send_message(chat_id, "Пользователь с такими данными уже зарегистрирован.")
@@ -82,18 +82,21 @@ def register_user_from_qr_data(chat_id, qr_data):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     telegram_id = message.from_user.id
-    role, group_name, last_name, first_name, middle_name = db.get_student_info(telegram_id)
+    role, group_name, last_name, first_name, middle_name, is_active = db.get_student_info(telegram_id)
 
-    if role:
-        set_commands_for_user(telegram_id, role)
-        if role == 'student' and group_name:
-            bot.reply_to(message, f"Добро пожаловать! Ваша роль: студент. Ваша учебная группа: {group_name}.")
-        elif role == 'teacher':
-            bot.reply_to(message, f"Добро пожаловать! Ваша роль: преподаватель.")
-        elif role == 'depot':
-            bot.reply_to(message, f"Добро пожаловать! Ваша роль: учебная часть.")
+    if set_active:
+        if role:
+            set_commands_for_user(telegram_id, role)
+            if role == 'student' and group_name:
+                bot.reply_to(message, f"Добро пожаловать! Ваша роль: студент. Ваша учебная группа: {group_name}.")
+            elif role == 'teacher':
+                bot.reply_to(message, f"Добро пожаловать! Ваша роль: преподаватель.")
+            elif role == 'depot':
+                bot.reply_to(message, f"Добро пожаловать! Ваша роль: учебная часть.")
+        else:
+            bot.reply_to(message, "Вашего ID нет в базе данных. Пожалуйста, обратитесь к администратору.")
     else:
-        bot.reply_to(message, "Вашего ID нет в базе данных. Пожалуйста, обратитесь к администратору.")
+        bot.reply_to(message, "Ваш аккаунт неактивен. Обратитесь к администратору для поддержки.")
 
 @bot.message_handler(commands=['schedule'])
 def show_schedule(message):

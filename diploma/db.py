@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import datetime
 
 
 class Database:
@@ -8,6 +9,8 @@ class Database:
         self.conn = sqlite3.connect(self.db_file, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.create_tables()
+        self.add_is_active_column()
+
 
     def create_tables(self):
         self.cursor.execute("""
@@ -281,6 +284,10 @@ class Database:
         """)
         self.conn.commit()
 
+    def add_is_active_column(self):
+        self.cursor.execute("ALTER TABLE users ADD COLUMN isActive BOOL DEFAULT 1")
+        self.conn.commit()
+
     def find_students_by_name_and_group(self, full_name, group_name):
         self.cursor.execute("""
             SELECT users.id, last_name, first_name, middle_name 
@@ -298,8 +305,21 @@ class Database:
         """, (department, full_name))
         return self.cursor.fetchone()
 
+    def update_user_activity_status(self):
+        today = datetime.date.today()
+        self.cursor.execute("""
+            UPDATE users 
+            SET isActive = CASE 
+                WHEN start_date <= ? AND end_date >= ? THEN 1
+                ELSE 0
+            END
+        """, (today, today))
+        self.conn.commit()
+
     def execute_query(self, query, params):
         pass
 
 
 db = Database("your_database.db")
+# users = db.view_users()
+# print(users)
