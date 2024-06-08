@@ -4,7 +4,6 @@ import os
 
 
 def generate_qr_codes(csv_file):
-    # Ensure the 'qr_codes' directory exists
     if not os.path.exists('qr_codes'):
         os.makedirs('qr_codes')
 

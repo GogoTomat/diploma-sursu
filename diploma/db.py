@@ -9,7 +9,7 @@ class Database:
         self.conn = sqlite3.connect(self.db_file, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.create_tables()
-        self.add_is_active_column()
+        # self.add_is_active_column()
 
 
     def create_tables(self):
@@ -316,10 +316,37 @@ class Database:
         """, (today, today))
         self.conn.commit()
 
+    def view_is_active(self, user_id):
+        self.cursor.execute("SELECT isActive FROM users WHERE id = ?", (user_id,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        return None
+
+    def get_user_by_id(self, user_id):
+        self.cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        result = self.cursor.fetchone()
+        if result:
+            user_data = {
+                "id": result[0],
+                "last_name": result[1],
+                "first_name": result[2],
+                "middle_name": result[3],
+                "roles": result[4],
+                "group_id": result[5],
+                "department": result[6],
+                "start_date": result[7],
+                "end_date": result[8],
+                "isActive": result[9] if len(result) > 9 else None
+            }
+            return user_data
+        return None
+
     def execute_query(self, query, params):
         pass
 
 
 db = Database("your_database.db")
+# db.delete_user(825795912)
 # users = db.view_users()
 # print(users)

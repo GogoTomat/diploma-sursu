@@ -5,7 +5,7 @@ from PIL import Image
 import io
 from db import Database
 
-API_TOKEN = 'YOUR_API_TOKEN'
+API_TOKEN = 'INSERT YOUR TOKEN HERE'
 bot = telebot.TeleBot(API_TOKEN)
 
 db = Database('your_database.db')
@@ -55,35 +55,35 @@ def process_qr_code(message):
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
+        telegram_id = message.from_user.id
 
         image = Image.open(io.BytesIO(downloaded_file))
         decoded_objects = decode(image)
 
         if decoded_objects:
             qr_data = decoded_objects[0].data.decode("utf-8")
-            register_user_from_qr_data(message.chat.id, qr_data)
+            register_user_from_qr_data(message.chat.id, telegram_id, qr_data)
         else:
             bot.reply_to(message, "Не удалось распознать QR-код. Пожалуйста, попробуйте снова.")
     else:
         bot.reply_to(message, "Пожалуйста, отправьте фото QR-кода.")
 
 
-def register_user_from_qr_data(chat_id, qr_data):
+def register_user_from_qr_data(chat_id, telegram_id, qr_data):
     user_data = qr_data.split(',')
     last_name, first_name, middle_name, roles, group_id, department, start_date, end_date = user_data
-    telegram_id = message.from_user.id
 
-    existing_user = db.get_user_by_name_and_group(last_name, first_name, middle_name, group_id)
+    existing_user = db.get_user_by_id(telegram_id)
     if existing_user:
         bot.send_message(chat_id, "Пользователь с такими данными уже зарегистрирован.")
-    else:
-        db.add_user(telegram_id, last_name, first_name, middle_name, roles, group_id, department, start_date, end_date)
-        bot.send_message(chat_id, f"Пользователь {last_name} {first_name} успешно зарегистрирован.")
+    db.add_user(telegram_id, last_name, first_name, middle_name, roles, group_id, department, start_date, end_date)
+    bot.send_message(chat_id, f"Пользователь {last_name} {first_name} успешно зарегистрирован.")
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     telegram_id = message.from_user.id
-    role, group_name, last_name, first_name, middle_name, is_active = db.get_student_info(telegram_id)
-
+    role, group_name, last_name, first_name, middle_name = db.get_student_info(telegram_id)
+    set_active = db.view_isActive(telegram_id)
     if set_active:
         if role:
             set_commands_for_user(telegram_id, role)
