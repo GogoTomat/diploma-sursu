@@ -9,6 +9,7 @@ class Database:
         self.conn = sqlite3.connect(self.db_file, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.create_tables()
+        # self.add_news_table()
         # self.add_is_active_column()
 
 
@@ -369,6 +370,44 @@ class Database:
             if result:
                 return result[0]
         return None
+
+    def add_news_table(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news (
+                id INTEGER PRIMARY KEY,
+                new TEXT,
+                themes TEXT
+            );
+        """)
+        self.conn.commit()
+
+    def view_recent_news(self, num):
+        self.cursor.execute("""
+            SELECT * FROM news ORDER BY id DESC LIMIT ?
+        """, (num,))
+        rows = self.cursor.fetchall()
+        news_list = []
+        for row in rows:
+            news_dict = {
+                'id': row[0],
+                'topic': row[1],
+                'text': row[2],
+            }
+            news_list.append(news_dict)
+        return news_list
+
+    def view_recent_news_by_theme(self, num, theme):
+        self.cursor.execute("""
+            SELECT * FROM news WHERE themes LIKE ? ORDER BY id DESC LIMIT ?
+        """, ('%' + theme + '%', num))
+        rows = self.cursor.fetchall()
+        return rows
+
+    def add_news_entry(self, news_content, themes):
+        self.cursor.execute("""
+            INSERT INTO news (new, themes) VALUES (?, ?)
+        """, (news_content, themes))
+        self.conn.commit()
 
     def execute_query(self, query, params):
         pass

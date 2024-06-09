@@ -5,7 +5,7 @@ from PIL import Image
 import io
 from db import Database
 
-API_TOKEN = '6591875624:AAHn0UjMsSzR3hXbUsUeHdf4HpOVL4BQuz0'
+API_TOKEN = ''
 bot = telebot.TeleBot(API_TOKEN)
 
 db = Database('your_database.db')
@@ -20,7 +20,8 @@ student_commands = [
 teacher_commands = [
     types.BotCommand('start', 'Начать'),
     types.BotCommand('broadcast', 'Отправить сообщение группам'),
-    types.BotCommand('message_student', 'Написать студенту')
+    types.BotCommand('message_student', 'Написать студенту'),
+    types.BotCommand('sendSub', 'Отправить сообщение всем студент, изучающим дисциплину')
 ]
 
 depot_commands = [
@@ -396,6 +397,64 @@ def send_message_to_groups(message, groups, content, content_type='text'):
         bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
     else:
         bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
+
+@bot.message_handler(commands=['add_news'])
+def add_news_start(message):
+    msg = bot.reply_to(message, "Введите тему новости:")
+    bot.register_next_step_handler(msg, add_news_topic)
+
+def add_news_topic(message):
+    topic = message.text.strip()
+    msg = bot.reply_to(message, "Введите текст новости:")
+    bot.register_next_step_handler(msg, lambda m: add_news_text(m, topic))
+
+def add_news_text(message, topic):
+    text = message.text.strip()
+    db.add_news_entry(text, topic)
+    bot.reply_to(message, "Новость успешно добавлена в базу данных.")
+
+
+@bot.message_handler(commands=['view_news'])
+def request_news_count(message):
+    msg = bot.reply_to(message, "Введите количество последних новостей:")
+    bot.register_next_step_handler(msg, process_news_count)
+
+def process_news_count(message):
+    try:
+        count = int(message.text)
+        if count <= 0:
+            bot.reply_to(message, "Пожалуйста, введите число больше нуля.")
+            return
+        news = db.view_recent_news(count)
+        if news:
+            response = "Последние новости:\n\n"
+            for item in news:
+                response += f"Тема: {item['topic']}\n"
+                response += f"Текст: {item['text']}\n\n"
+            bot.reply_to(message, response)
+        else:
+            bot.reply_to(message, "Новостей не найдено.")
+    except ValueError:
+        bot.reply_to(message, "Пожалуйста, введите корректное число.")
+
+@bot.message_handler(commands=['view_news_by_theme'])
+def view_news_by_theme_start(message):
+    msg = bot.reply_to(message, "Введите тему новости:")
+    bot.register_next_step_handler(msg, view_news_by_theme_enter_topic)
+
+def view_news_by_theme_enter_topic(message):
+    theme = message.text.strip()
+    msg = bot.reply_to(message, "Введите количество новостей:")
+    bot.register_next_step_handler(msg, lambda m: view_news_by_theme(message, theme, m.text.strip()))
+
+def view_news_by_theme(message, theme, num):
+    rows = db.view_recent_news_by_theme(num, theme)
+    response = ""
+    for item in rows:
+        response += f"Тема: {item[1]}\n"
+        response += f"Содержание: {item[2]}\n"
+        response += "\n"
+    bot.reply_to(message, response)
 
 
 if __name__ == '__main__':
