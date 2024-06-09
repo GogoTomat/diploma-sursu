@@ -5,7 +5,7 @@ from PIL import Image
 import io
 from db import Database
 
-API_TOKEN = 'INSERT YOUR TOKEN HERE'
+API_TOKEN = '6591875624:AAHn0UjMsSzR3hXbUsUeHdf4HpOVL4BQuz0'
 bot = telebot.TeleBot(API_TOKEN)
 
 db = Database('your_database.db')
@@ -83,7 +83,7 @@ def register_user_from_qr_data(chat_id, telegram_id, qr_data):
 def send_welcome(message):
     telegram_id = message.from_user.id
     role, group_name, last_name, first_name, middle_name = db.get_student_info(telegram_id)
-    set_active = db.view_isActive(telegram_id)
+    set_active = db.view_is_active(telegram_id)
     if set_active:
         if role:
             set_commands_for_user(telegram_id, role)
@@ -335,6 +335,68 @@ def process_teacher_name_for_deletion(message, department):
         bot.reply_to(message, f"Преподаватель {teacher_name} из кафедры {department} успешно удален.")
     else:
         bot.reply_to(message, "Преподаватель не найден. Проверьте данные и попробуйте снова.")
+
+
+@bot.message_handler(commands=['update_status'])
+def update_activity_status(message):
+    telegram_id = message.from_user.id
+    role = db.get_user_role(telegram_id)
+    if role == 'depot':
+        db.update_user_activity_status()
+        bot.reply_to(message, "Статусы активности пользователей обновлены.")
+    else:
+        bot.reply_to(message, "Эта команда доступна только учебной части.")
+
+
+@bot.message_handler(commands=['sendSub'])
+def send_broadcast(message):
+    telegram_id = message.from_user.id
+    role = db.get_user_role(telegram_id)
+    # subjs = db.get_subjects_taught_by_teacher(telegram_id)
+    if role == 'teacher':
+        msg = bot.reply_to(message, "Введите полное или сокращенное название предмета.")
+        bot.register_next_step_handler(msg, process_sub_selection)
+    else:
+        bot.reply_to(message, "Эта команда доступна только преподавателям.")
+
+def process_sub_selection(message):
+    subject_names = message.text
+    msg = bot.reply_to(message, "Введите сообщение для отправки выбранным группам:")
+    groups = db.get_group_id_by_subject_name(subject_names)
+    bot.register_next_step_handler(msg, lambda m: process_broadcast_message(m, groups))
+
+def process_broadcast_message(message, groups):
+    if message.content_type == 'text':
+        send_message_to_groups(message, groups, message.text)
+    elif message.content_type == 'photo':
+        send_message_to_groups(message, groups, message.photo[-1].file_id, content_type='photo')
+    elif message.content_type == 'document':
+        send_message_to_groups(message, groups, message.document.file_id, content_type='document')
+
+def send_message_to_groups(message, groups, content, content_type='text'):
+    student_ids = []
+    teacher_id = message.from_user.id
+    teacher_info = db.get_teacher_info_all(teacher_id)
+    teacher_name = f"{teacher_info[1]} {teacher_info[2]} {teacher_info[3]}"
+    teacher_department = teacher_info[6]
+
+    students = db.get_students_by_group_id(groups)
+    student_ids.extend([student[0] for student in students])
+
+    student_ids = list(set(student_ids) - {teacher_id})
+
+    if student_ids:
+        for student_id in student_ids:
+            if content_type == 'text':
+                bot.send_message(student_id, f"Сообщение от {teacher_name} ({teacher_department}):\n\n{content}")
+            elif content_type == 'photo':
+                bot.send_photo(student_id, content, caption=f"Сообщение от {teacher_name} ({teacher_department}):")
+            elif content_type == 'document':
+                bot.send_document(student_id, content, caption=f"Сообщение от {teacher_name} ({teacher_department}):")
+        bot.reply_to(message, "Сообщение успешно отправлено всем студентам выбранных групп.")
+    else:
+        bot.reply_to(message, "Не удалось найти студентов для указанных групп или произошла ошибка при получении списка студентов.")
+
 
 if __name__ == '__main__':
     print("Bot is polling...")

@@ -342,11 +342,48 @@ class Database:
             return user_data
         return None
 
+    def get_subjects_taught_by_teacher(self, teacher_id):
+        self.cursor.execute("""
+            SELECT  subjects.name, subjects.short_name
+            FROM taught_subjects
+            JOIN subjects ON taught_subjects.subject_id = subjects.id
+            WHERE taught_subjects.teacher_id = ?
+        """, (teacher_id,))
+        return self.cursor.fetchall()
+
+    def get_group_id_by_subject_name(self, subject_name):
+        self.cursor.execute("""
+            SELECT id 
+            FROM subjects
+            WHERE name = ? OR short_name = ?
+        """, (subject_name, subject_name))
+        subject = self.cursor.fetchone()
+        if subject:
+            subject_id = subject[0]
+            self.cursor.execute("""
+                SELECT group_id 
+                FROM taught_subjects
+                WHERE subject_id = ?
+            """, (subject_id,))
+            result = self.cursor.fetchone()
+            if result:
+                return result[0]
+        return None
+
     def execute_query(self, query, params):
         pass
 
 
 db = Database("your_database.db")
-# db.delete_user(825795912)
-# users = db.view_users()
+# users = db.get_subjects_taught_by_teacher(6383988180)
 # print(users)
+# subject_names = 'АиГ'
+taught = db.get_subjects_taught_by_teacher(6383988180)
+print(taught)
+# for full, short in taught:
+#     if short == subject_names or short == subject_names:
+#         print(1)
+#         break
+#     else:
+#         print(2)
+#         break
